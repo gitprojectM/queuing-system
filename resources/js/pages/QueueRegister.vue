@@ -84,11 +84,12 @@ const availableWindows = computed(() => {
 
 function submit() {
   form.post('/queue/register', {
-    onSuccess: (page) => {
+    onSuccess: () => {
       successMessage.value = 'You have been registered in the queue!';
-      // Try to get the ticket URL from the response (if available)
-      if (page && page.props && page.props.queue && page.props.queue.id) {
-        ticketUrl.value = `/queue/ticket/${page.props.queue.id}`;
+      // Get the ticket URL from the latest page props
+      const queue = usePage().props.queue as { id: number } | undefined;
+      if (queue && queue.id) {
+        ticketUrl.value = `/queue/ticket/${queue.id}`;
       } else {
         ticketUrl.value = '';
       }

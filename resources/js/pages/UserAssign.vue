@@ -52,7 +52,15 @@ import { ref, computed } from 'vue';
 const pageProps = usePage().props as any;
 const { services = [], windows = [], user } = pageProps;
 
-const form = useForm({
+interface UserForm {
+  name: string;
+  email: string;
+  password: string;
+  service_id: string | number;
+  window_id: string | number;
+}
+
+const form = useForm<UserForm>({
   name: user?.name || '',
   email: user?.email || '',
   password: '',

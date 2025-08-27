@@ -2,7 +2,14 @@
 <script setup lang="ts">
 import { usePage, Head } from '@inertiajs/vue3';
 
-const queue = usePage().props.queue;
+interface Queue {
+  queue_number: string | number;
+  service?: { name?: string };
+  window?: { name?: string };
+  created_at: string;
+}
+
+const queue = usePage().props.queue as Queue;
 
 function printTicket() {
   window.print();
