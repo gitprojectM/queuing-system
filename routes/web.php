@@ -13,6 +13,12 @@ use App\Http\Controllers\QueueController;
 Route::get('/queue/ticket/{queue}', [QueueController::class, 'ticket'])->name('queue.ticket');
 // Public Now Serving page
 Route::get('/now-serving', [PublicQueueController::class, 'index'])->name('public.queue');
+// Custom service selection page (must come before the dynamic route)
+Route::get('/now-serving/select', [PublicQueueController::class, 'selectServices'])->name('public.queue.select');
+// Window-specific Now Serving pages
+Route::get('/now-serving/window/{window}', [PublicQueueController::class, 'windowView'])->name('public.queue.window');
+// Service-specific Now Serving pages (must come last due to dynamic parameter)
+Route::get('/now-serving/{service}', [PublicQueueController::class, 'serviceView'])->name('public.queue.service');
 
 Route::get('/my-queue', [ClientQueueController::class, 'index'])->middleware(['auth'])->name('client.queue');
 
