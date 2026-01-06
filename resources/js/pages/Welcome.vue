@@ -8,7 +8,7 @@ import { Head, Link } from '@inertiajs/vue3';
         <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     </Head>
     <div class="flex min-h-screen flex-col items-center bg-[#FDFDFC] p-6 text-[#1b1b18] lg:justify-center lg:p-8 dark:bg-[#0a0a0a]">
-        <header class="mb-6 w-full max-w-[335px] text-sm not-has-[nav]:hidden lg:max-w-4xl">
+        <header class="hidden mb-3 w-full max-w-[335px] text-sm not-has-[nav]:hidden lg:max-w-4xl">
             <nav class="flex items-center justify-end gap-4">
                 <Link
                     v-if="$page.props.auth.user"
@@ -32,19 +32,28 @@ import { Head, Link } from '@inertiajs/vue3';
                     </Link>
                 </template>
             </nav>
-        </header>
+            </header>
+
+        <!-- TAMPCO banner image -->
+        <div class="mb-6 flex w-full max-w-4xl justify-center">
+            <img
+                src="/images/tampco-header.png"
+                alt="TAMPCO - Tabuk Multipurpose Cooperative"
+                class="h-auto w-full max-h-40 object-contain"
+            />
+        </div>
         <div class="flex w-full items-center justify-center opacity-100 transition-opacity duration-750 lg:grow starting:opacity-0">
             <main class="flex w-full max-w-[335px] flex-col-reverse overflow-hidden rounded-lg lg:max-w-4xl lg:flex-row">
                 <div
                     class="flex-1 rounded-br-lg rounded-bl-lg bg-white p-6 pb-12 text-[13px] leading-[20px] shadow-[inset_0px_0px_0px_1px_rgba(26,26,0,0.16)] lg:rounded-tl-lg lg:rounded-br-none lg:p-20 dark:bg-[#161615] dark:text-[#EDEDEC] dark:shadow-[inset_0px_0px_0px_1px_#fffaed2d]"
                 >
-                    <h1 class="mb-1 font-bold text-2xl text-[#f53003] dark:text-[#FF4433]">Welcome to [Your Establishment Name]</h1>
+                    <h1 class="mb-1 font-bold text-2xl text-[#f53003] dark:text-[#FF4433]">Welcome to TAMPCO</h1>
                     <p class="mb-2 text-[#706f6c] dark:text-[#A1A09A] text-lg">
                         Your comfort and convenience is our priority.<br />Please register for the queue or explore our services below.
                     </p>
                     <div class="mb-4 text-[#1b1b18] dark:text-[#EDEDEC] text-base">
-                        <span class="font-semibold">[Your Tagline or Service Focus]</span><br />
-                        <span>Thank you for choosing us. We look forward to serving you!</span>
+                        <span class="font-semibold">Tabuk Multipurpose Cooperative Queueing System</span><br />
+                        <span>Thank you for choosing TAMPCO. We look forward to serving you!</span>
                     </div>
                     <!-- You can add establishment-specific info, services, or instructions here -->
                     <ul class="mb-4 flex flex-col lg:mb-6">
@@ -59,15 +68,6 @@ import { Head, Link } from '@inertiajs/vue3';
                         </li>
                     </ul>
                     <ul class="flex gap-3 text-sm leading-normal">
-                        <li>
-                            <a
-                                href="https://tampco.com"
-                                target="_blank"
-                                class="inline-block rounded-sm border border-black bg-[#1b1b18] px-5 py-1.5 text-sm leading-normal text-white hover:border-black hover:bg-black dark:border-[#eeeeec] dark:bg-[#eeeeec] dark:text-[#1C1C1A] dark:hover:border-white dark:hover:bg-white"
-                            >
-                                Deploy now
-                            </a>
-                        </li>
                         <li>
                             <Link
                                 :href="route('queue.register')"
@@ -86,9 +86,9 @@ import { Head, Link } from '@inertiajs/vue3';
                         </li>
                     </ul>
                 </div>
-                <div
-                    class="relative -mb-px aspect-335/376 w-full shrink-0 overflow-hidden rounded-t-lg bg-[#fff2f2] lg:mb-0 lg:-ml-px lg:aspect-auto lg:w-[438px] lg:rounded-t-none lg:rounded-r-lg dark:bg-[#1D0002]"
-                >
+                    <div
+                        class="hidden"
+                    >
                     <svg
                         class="w-full max-w-none translate-y-0 text-[#F53003] opacity-100 transition-all duration-750 dark:text-[#F61500] starting:translate-y-6 starting:opacity-0"
                         viewBox="0 0 438 104"
