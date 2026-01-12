@@ -37,8 +37,8 @@ class UserListController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'password' => 'nullable|string|min:6',
-            'service_id' => 'required|exists:services,id',
-            'window_id' => 'required|exists:windows,id',
+            'service_id' => 'nullable|exists:services,id',
+            'window_id' => 'nullable|exists:windows,id',
         ]);
 
         $user->name = $validated['name'];
@@ -48,8 +48,17 @@ class UserListController extends Controller
         }
         $user->save();
 
-        $user->services()->sync([$validated['service_id']]);
-        $user->windows()->sync([$validated['window_id']]);
+        if (!empty($validated['service_id'])) {
+            $user->services()->sync([$validated['service_id']]);
+        } else {
+            $user->services()->detach();
+        }
+
+        if (!empty($validated['window_id'])) {
+            $user->windows()->sync([$validated['window_id']]);
+        } else {
+            $user->windows()->detach();
+        }
 
         return redirect()->route('users.list')->with('success', 'User updated successfully!');
     }

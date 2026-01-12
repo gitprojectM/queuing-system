@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Service;
 use App\Models\Window;
 use App\Models\Queue;
+use App\Models\QueueStep;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Events\QueueUpdated;
@@ -24,8 +25,39 @@ class QueueController extends Controller
             ->orderByDesc('created_at')
             ->first();
         if ($queue) {
-            $queue->status = 'completed';
-            $queue->save();
+            // Try to complete current step and advance to next service if defined
+            $advanced = false;
+            $currentStep = QueueStep::where('queue_id', $queue->id)
+                ->where('service_id', $queue->service_id)
+                ->whereIn('status', ['waiting', 'assigned'])
+                ->orderBy('step_order')
+                ->first();
+            if ($currentStep) {
+                $currentStep->status = 'completed';
+                $currentStep->completed_at = now();
+                $currentStep->save();
+
+                $nextStep = QueueStep::where('queue_id', $queue->id)
+                    ->where('step_order', '>', $currentStep->step_order)
+                    ->orderBy('step_order')
+                    ->first();
+                if ($nextStep) {
+                    $nextStep->status = 'waiting';
+                    $nextStep->save();
+                    // Move queue to next service, keep same number and mark as waiting
+                    $queue->service_id = $nextStep->service_id;
+                    $queue->status = 'waiting';
+                    $queue->window_id = null;
+                    $queue->save();
+                    $advanced = true;
+                }
+            }
+
+            if (!$advanced) {
+                // No further steps: mark entire queue as completed
+                $queue->status = 'completed';
+                $queue->save();
+            }
             event(new QueueUpdated($queue));
         }
         $window->current_client_id = null;
@@ -53,9 +85,39 @@ class QueueController extends Controller
             if ($window && $window->current_client_id !== null) {
                 $currentQueue = \App\Models\Queue::find($window->current_client_id);
                 if ($currentQueue && $currentQueue->status !== 'completed') {
-                    $currentQueue->status = 'completed';
-                    $currentQueue->save();
-                    \Log::info('DEBUG: nextQueue - Auto-completed busy queue', ['queue_id' => $currentQueue->id]);
+                    // Reuse the same multi-step advancement logic as completeQueue
+                    $advanced = false;
+                    $currentStep = QueueStep::where('queue_id', $currentQueue->id)
+                        ->where('service_id', $currentQueue->service_id)
+                        ->whereIn('status', ['waiting', 'assigned'])
+                        ->orderBy('step_order')
+                        ->first();
+                    if ($currentStep) {
+                        $currentStep->status = 'completed';
+                        $currentStep->completed_at = now();
+                        $currentStep->save();
+
+                        $nextStep = QueueStep::where('queue_id', $currentQueue->id)
+                            ->where('step_order', '>', $currentStep->step_order)
+                            ->orderBy('step_order')
+                            ->first();
+                        if ($nextStep) {
+                            $nextStep->status = 'waiting';
+                            $nextStep->save();
+                            $currentQueue->service_id = $nextStep->service_id;
+                            $currentQueue->status = 'waiting';
+                            $currentQueue->window_id = null;
+                            $currentQueue->save();
+                            $advanced = true;
+                        }
+                    }
+
+                    if (! $advanced) {
+                        $currentQueue->status = 'completed';
+                        $currentQueue->save();
+                    }
+
+                    \Log::info('DEBUG: nextQueue - Auto-completed/advanced busy queue', ['queue_id' => $currentQueue->id, 'advanced' => $advanced]);
                     event(new \App\Events\QueueUpdated($currentQueue));
                 }
                 $window->current_client_id = null;
@@ -177,6 +239,17 @@ class QueueController extends Controller
             'status' => 'waiting',
             'queue_date' => $today,
         ]);
+        // Ensure there is at least one step for this queue (single-service visit)
+        QueueStep::firstOrCreate(
+            [
+                'queue_id' => $queue->id,
+                'service_id' => $queue->service_id,
+                'step_order' => 1,
+            ],
+            [
+                'status' => 'waiting',
+            ]
+        );
         \Log::info('Register: Waiting queue', $queue->toArray());
         \Log::info('Broadcasting QueueUpdated', $queue->toArray());
         event(new \App\Events\QueueUpdated($queue));

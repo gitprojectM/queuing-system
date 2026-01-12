@@ -30,6 +30,11 @@ class Service extends Model
         return $this->belongsToMany(User::class);
     }
 
+    public function queueSteps()
+    {
+        return $this->hasMany(\App\Models\QueueStep::class);
+    }
+
     /**
      * The queues for this service.
      */

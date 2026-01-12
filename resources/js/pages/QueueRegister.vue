@@ -28,14 +28,47 @@
               <div v-if="form.errors.name" class="text-red-500 text-sm mt-1">{{ form.errors.name }}</div>
             </div>
             <div>
-              <label class="block mb-1 font-semibold text-gray-700 dark:text-gray-200" for="service">Service</label>
-              <select v-model="form.service_id" id="service"
-                class="input input-bordered w-full rounded-xl border border-[#e3e3e0] dark:border-[#333] bg-white dark:bg-[#232323] px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#f53003] focus:border-[#f53003] transition-all duration-150 text-base"
-                required>
-                <option value="" disabled>Select a service</option>
-                <option v-for="service in services" :key="service.id" :value="service.id">{{ service.name }}</option>
-              </select>
-              <div v-if="form.errors.service_id" class="text-red-500 text-sm mt-1">{{ form.errors.service_id }}</div>
+              <div class="mb-3 flex items-center gap-3">
+                <span class="font-semibold text-gray-700 dark:text-gray-200">Request Type:</span>
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                  <input type="radio" value="single" v-model="mode" class="radio radio-sm" />
+                  <span>Single service</span>
+                </label>
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                  <input type="radio" value="multi" v-model="mode" class="radio radio-sm" />
+                  <span>Multiple services</span>
+                </label>
+              </div>
+
+              <div v-if="mode === 'single'">
+                <label class="block mb-1 font-semibold text-gray-700 dark:text-gray-200" for="service">Service</label>
+                <select v-model="form.service_id" id="service"
+                  class="input input-bordered w-full rounded-xl border border-[#e3e3e0] dark:border-[#333] bg-white dark:bg-[#232323] px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#f53003] focus:border-[#f53003] transition-all duration-150 text-base"
+                  required>
+                  <option value="" disabled>Select a service</option>
+                  <option v-for="service in services" :key="service.id" :value="service.id">{{ service.name }}</option>
+                </select>
+                <div v-if="form.errors.service_id" class="text-red-500 text-sm mt-1">{{ form.errors.service_id }}</div>
+              </div>
+
+              <div v-else>
+                <label class="block mb-1 font-semibold text-gray-700 dark:text-gray-200">Services (in order)</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Click the services in the order the client will visit them (e.g., Loan then Teller).</p>
+                <div class="space-y-2 max-h-64 overflow-y-auto rounded-lg border border-[#e3e3e0] dark:border-[#333] bg-white dark:bg-[#232323] p-2">
+                  <button
+                    v-for="service in services"
+                    :key="service.id"
+                    type="button"
+                    class="w-full flex items-center justify-between px-3 py-2 rounded-md text-left text-sm border transition-colors"
+                    :class="selectedOrder(service.id) >= 0 ? 'bg-[#ffe3db] border-[#f53003] text-[#f53003]' : 'bg-white dark:bg-[#232323] border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'"
+                    @click="toggleService(service.id)"
+                  >
+                    <span>{{ service.name }}</span>
+                    <span v-if="selectedOrder(service.id) >= 0" class="text-xs font-semibold">Step {{ selectedOrder(service.id) + 1 }}</span>
+                  </button>
+                </div>
+                <div v-if="form.errors.service_ids" class="text-red-500 text-sm mt-1">{{ form.errors.service_ids }}</div>
+              </div>
             </div>
             <div class="flex justify-end mt-6">
               <button type="submit" class="btn btn-primary px-8 py-2 flex items-center gap-2 text-lg rounded-full shadow-md transition-all duration-150 hover:scale-105" :disabled="form.processing">
@@ -67,10 +100,14 @@ const form = useForm({
   name: '',
   service_id: '',
   window_id: '',
+  service_ids: [] as number[],
 });
 const successMessage = ref('');
 const ticketUrl = ref('');
 const modalOpen = ref(true);
+
+const mode = ref<'single' | 'multi'>('single');
+const selectedServices = ref<number[]>([]);
 
 const availableWindows = computed(() => {
   if (!form.service_id) return [];
@@ -83,18 +120,61 @@ const availableWindows = computed(() => {
 });
 
 function submit() {
-  form.post('/queue/register', {
-    onSuccess: () => {
-      successMessage.value = 'You have been registered in the queue!';
-      // Get the ticket URL from the latest page props
-      const queue = usePage().props.queue as { id: number } | undefined;
-      if (queue && queue.id) {
-        ticketUrl.value = `/queue/ticket/${queue.id}`;
-      } else {
-        ticketUrl.value = '';
-      }
-      form.reset();
-    },
-  });
+  if (mode.value === 'single') {
+    form.transform((data) => ({
+      name: data.name,
+      service_id: data.service_id,
+    })).post('/queue/register', {
+      onSuccess: () => {
+        successMessage.value = 'You have been registered in the queue!';
+        const queue = usePage().props.queue as { id: number } | undefined;
+        if (queue && queue.id) {
+          ticketUrl.value = `/queue/ticket/${queue.id}`;
+        } else {
+          ticketUrl.value = '';
+        }
+        form.reset();
+        selectedServices.value = [];
+        mode.value = 'single';
+      },
+    });
+  } else {
+    if (!selectedServices.value.length) {
+      form.setError('service_ids', 'Please select at least one service.');
+      return;
+    }
+    form.service_ids = [...selectedServices.value];
+    form.transform((data) => ({
+      name: data.name,
+      service_ids: data.service_ids,
+    })).post(route('queue.multi.store'), {
+      onSuccess: () => {
+        successMessage.value = 'You have been registered in the queue!';
+        const queue = usePage().props.queue as { id: number } | undefined;
+        if (queue && queue.id) {
+          ticketUrl.value = `/queue/ticket/${queue.id}`;
+        } else {
+          ticketUrl.value = '';
+        }
+        form.reset();
+        selectedServices.value = [];
+        mode.value = 'single';
+      },
+    });
+  }
+}
+
+function toggleService(serviceId: number) {
+  const index = selectedServices.value.indexOf(serviceId);
+  if (index === -1) {
+    selectedServices.value.push(serviceId);
+  } else {
+    selectedServices.value.splice(index, 1);
+  }
+  form.clearErrors('service_ids');
+}
+
+function selectedOrder(serviceId: number) {
+  return selectedServices.value.indexOf(serviceId);
 }
 </script>

@@ -47,4 +47,9 @@ class Window extends Model
         return $this->hasMany(\App\Models\Queue::class, 'window_id')
             ->where('status', 'waiting');
     }
+
+    public function queueSteps()
+    {
+        return $this->hasMany(\App\Models\QueueStep::class);
+    }
 }

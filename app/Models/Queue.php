@@ -24,6 +24,16 @@ class Queue extends Model
         'queue_date',
     ];
 
+    public function steps()
+    {
+        return $this->hasMany(\App\Models\QueueStep::class)->orderBy('step_order');
+    }
+
+    public function currentStep()
+    {
+        return $this->hasOne(\App\Models\QueueStep::class)->whereIn('status', ['waiting', 'assigned'])->orderBy('step_order');
+    }
+
     public function service()
     {
         return $this->belongsTo(Service::class);

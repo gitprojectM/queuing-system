@@ -21,7 +21,13 @@ onMounted(() => {
   window.Echo.channel('windows').listen('WindowUpdated', (event: any) => {
       if (audio) {
         audio.currentTime = 0;
-        audio.play();
+        // Handle autoplay restrictions gracefully
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+          playPromise.catch(() => {
+            // Ignore NotAllowedError when user hasn't interacted yet
+          });
+        }
       }
       // Try to extract the latest queue and window from event, fallback to announce all
       if (event && event.window && event.window.current_client && event.window.name) {

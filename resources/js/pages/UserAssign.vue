@@ -22,16 +22,16 @@
         </div>
         <div>
           <label class="block mb-1 font-semibold text-gray-700 dark:text-gray-200">Assign Service</label>
-          <select v-model="form.service_id" class="input input-bordered w-full" required>
-            <option value="" disabled>Select a service</option>
+          <select v-model="form.service_id" class="input input-bordered w-full">
+            <option :value="null">No service (unassign)</option>
             <option v-for="service in services" :key="service.id" :value="service.id">{{ service.name }}</option>
           </select>
           <div v-if="form.errors.service_id" class="text-red-500 text-sm mt-1">{{ form.errors.service_id }}</div>
         </div>
         <div>
           <label class="block mb-1 font-semibold text-gray-700 dark:text-gray-200">Assign Window</label>
-          <select v-model="form.window_id" class="input input-bordered w-full" required>
-            <option value="" disabled>Select a window</option>
+          <select v-model="form.window_id" class="input input-bordered w-full">
+            <option :value="null">No window (unassign)</option>
             <option v-for="window in windows" :key="window.id" :value="window.id">{{ window.name }}</option>
           </select>
           <div v-if="form.errors.window_id" class="text-red-500 text-sm mt-1">{{ form.errors.window_id }}</div>
@@ -56,16 +56,16 @@ interface UserForm {
   name: string;
   email: string;
   password: string;
-  service_id: string | number;
-  window_id: string | number;
+  service_id: string | number | null;
+  window_id: string | number | null;
 }
 
 const form = useForm<UserForm>({
   name: user?.name || '',
   email: user?.email || '',
   password: '',
-  service_id: user?.services?.[0]?.id || '',
-  window_id: user?.windows?.[0]?.id || '',
+  service_id: user?.services?.[0]?.id ?? null,
+  window_id: user?.windows?.[0]?.id ?? null,
 });
 const successMessage = ref('');
 
