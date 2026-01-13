@@ -224,8 +224,21 @@ class QueueController extends Controller
 
         // Always create as waiting, never assign a window on registration
         $today = now()->toDateString();
-        $lastQueue = Queue::where('service_id', $validated['service_id'])
-            ->whereDate('queue_date', $today)
+        // Auto-complete any queues from previous days so numbering and views reset
+        Queue::whereDate('queue_date', '<', $today)
+            ->whereIn('status', ['waiting', 'assigned'])
+            ->update([
+                'status' => 'completed',
+                'window_id' => null,
+            ]);
+        // Also clear windows that are still pointing at old-day clients
+        Window::whereHas('currentClient', function ($q) use ($today) {
+                $q->whereDate('queue_date', '<', $today);
+            })
+            ->update(['current_client_id' => null]);
+
+        // Use global daily numbering (same as multi-service) so numbers don't reset per service
+        $lastQueue = Queue::whereDate('queue_date', $today)
             ->orderByDesc('queue_number')
             ->first();
         $nextQueueNumber = $lastQueue ? $lastQueue->queue_number + 1 : 1;
