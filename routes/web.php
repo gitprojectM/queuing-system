@@ -29,7 +29,8 @@ Route::post('/queue/complete', [QueueController::class, 'completeQueue'])->name(
 // Trigger next queue assignment
 Route::post('/queue/next', [QueueController::class, 'nextQueue'])->name('queue.next');
 // Create a multi-service queue (one number, multiple services)
-Route::post('/queue/multi-service', [MultiServiceQueueController::class, 'store'])->middleware(['auth'])->name('queue.multi.store');
+// Public endpoint (no auth) so clients can register multiple services directly
+Route::post('/queue/multi-service', [MultiServiceQueueController::class, 'store'])->name('queue.multi.store');
 // User list and edit (admin only)
 Route::get('/users', [UserListController::class, 'index'])->middleware(['auth', 'admin'])->name('users.list');
 Route::get('/users/{user}/edit', [UserListController::class, 'edit'])->middleware(['auth', 'admin'])->name('users.edit');
