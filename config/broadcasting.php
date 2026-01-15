@@ -1,7 +1,9 @@
 <?php
 
 return [
-    'default' => env('BROADCAST_DRIVER', 'null'),
+    // If PUSHER_APP_KEY is configured, default to pusher to avoid silent "null" broadcasting
+    // which breaks realtime updates (Now Serving auto queue) without an obvious error.
+    'default' => env('BROADCAST_DRIVER', env('PUSHER_APP_KEY') ? 'pusher' : 'null'),
 
     'connections' => [
         'pusher' => [

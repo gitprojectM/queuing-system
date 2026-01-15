@@ -38,6 +38,9 @@ Route::post('/users/{user}/edit', [UserListController::class, 'update'])->middle
 // API for dashboard service summary
 Route::get('/api/dashboard/services', [\App\Http\Controllers\ServiceController::class, 'dashboardServices']);
 
+// Public API for Now Serving display (fallback polling when realtime drops)
+Route::get('/api/now-serving', [PublicQueueController::class, 'data'])->name('api.now-serving');
+
 // Add user and assign to service and window (admin only)
 Route::get('/users/assign', [UserAssignController::class, 'create'])->middleware(['auth', 'admin'])->name('users.assign');
 Route::post('/users/assign', [UserAssignController::class, 'store'])->middleware(['auth', 'admin']);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\PasswordController;
+use App\Http\Controllers\Settings\DisplayController;
 use App\Http\Controllers\Settings\ProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -21,4 +22,9 @@ Route::middleware('auth')->group(function () {
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/Appearance');
     })->name('appearance');
+});
+
+Route::middleware(['auth', 'admin'])->group(function () {
+    Route::get('settings/display', [DisplayController::class, 'edit'])->name('settings.display.edit');
+    Route::put('settings/display', [DisplayController::class, 'update'])->name('settings.display.update');
 });

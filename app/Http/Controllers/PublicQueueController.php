@@ -4,10 +4,36 @@ namespace App\Http\Controllers;
 
 use App\Models\Window;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
+use App\Models\AppSetting;
 
 class PublicQueueController extends Controller
 {
+    private const VIDEO_URL_KEY = 'display_video_url';
+
+    /**
+     * JSON endpoint for polling fallback (used by public displays).
+     */
+    public function data(Request $request)
+    {
+        $selectedServices = $request->get('services');
+
+        if ($selectedServices) {
+            $serviceIds = explode(',', $selectedServices);
+            $services = \App\Models\Service::with(['windows.currentClient.service', 'windows.currentClient.user'])
+                ->whereIn('id', $serviceIds)
+                ->get();
+        } else {
+            $services = \App\Models\Service::with(['windows.currentClient.service', 'windows.currentClient.user'])->get();
+        }
+
+        return response()->json([
+            'services' => $services,
+            'selectedServiceIds' => $selectedServices ? explode(',', $selectedServices) : [],
+        ]);
+    }
+
     public function index()
     {
         // Check if specific services are requested via URL parameters
@@ -24,10 +50,15 @@ class PublicQueueController extends Controller
             $services = \App\Models\Service::with(['windows.currentClient.service', 'windows.currentClient.user'])->get();
         }
         
+        $videoUrl = Cache::rememberForever(self::VIDEO_URL_KEY, function () {
+            return AppSetting::where('key', self::VIDEO_URL_KEY)->value('value') ?: '';
+        });
+
         return Inertia::render('PublicQueue', [
             'services' => $services,
             'allServices' => \App\Models\Service::all(), // For service selector
             'selectedServiceIds' => $selectedServices ? explode(',', $selectedServices) : [],
+            'videoUrl' => $videoUrl,
         ]);
     }
 

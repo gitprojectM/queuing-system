@@ -1,16 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { usePage, Head, router, Link } from '@inertiajs/vue3';
+import { usePage, Head, Link } from '@inertiajs/vue3';
+import { createNotificationAudio, type NotificationAudio } from '@/lib/notificationAudio';
 
-const services = computed(() => (usePage().props.services as any[]) || []);
+const servicesProp = computed(() => (usePage().props.services as any[]) || []);
+const servicesState = ref<any[]>([]);
 const allServices = computed(() => (usePage().props.allServices as any[]) || []);
 const selectedServiceIds = computed(() => (usePage().props.selectedServiceIds as number[]) || []);
 const videoUrl = computed(() => (usePage().props.videoUrl as string | null) || '');
-const displayedServiceIds = computed(() => (services.value as any[]).map((s: any) => Number(s.id)));
+const displayedServiceIds = computed(() => (servicesState.value as any[]).map((s: any) => Number(s.id)));
 
 // Optional: Real-time updates via Echo
-let audio: HTMLAudioElement | null = null;
+let notifier: NotificationAudio | null = null;
+const soundBlocked = ref(false);
+const realtimeState = ref<'connected' | 'connecting' | 'disconnected' | 'unknown'>('unknown');
+const lastUpdateAt = ref<number>(Date.now());
+const nowTick = ref<number>(Date.now());
 const latestWindow = ref<any | null>(null);
+
+const lastPlayedByWindowId = new Map<number, string>();
+let pollTimer: number | null = null;
+let tickTimer: number | null = null;
+
 function announceQueue(queueNumber: string | number, windowName: string, onEnd?: () => void) {
   const msg = new window.SpeechSynthesisUtterance(`Now serving ${queueNumber} at ${windowName}`);
   if (onEnd) {
@@ -20,7 +31,7 @@ function announceQueue(queueNumber: string | number, windowName: string, onEnd?:
 }
 
 function setInitialLatestWindow() {
-  const svcList = services.value as any[];
+  const svcList = servicesState.value as any[];
   const selectedIds = selectedServiceIds.value || [];
   for (const svc of svcList) {
     if (selectedIds.length && !selectedIds.some((id: any) => Number(id) === Number(svc.id))) {
@@ -34,58 +45,182 @@ function setInitialLatestWindow() {
     }
   }
 }
+
+function applyWindowUpdate(updatedWindow: any) {
+  for (const svc of servicesState.value) {
+    if (!svc.windows) continue;
+    const index = svc.windows.findIndex((w: any) => Number(w.id) === Number(updatedWindow.id));
+    if (index >= 0) {
+      svc.windows[index] = { ...svc.windows[index], ...updatedWindow };
+      return;
+    }
+  }
+}
+
+function computeLatestWindowFromServices() {
+  let best: any | null = null;
+  let bestTs = 0;
+  for (const svc of servicesState.value) {
+    for (const w of svc.windows || []) {
+      if (!w?.current_client) continue;
+      const ts = w.updated_at ? Date.parse(w.updated_at) : 0;
+      if (!best || ts >= bestTs) {
+        best = w;
+        bestTs = ts;
+      }
+    }
+  }
+  return best;
+}
+
+function windowClientKey(w: any) {
+  const windowId = w?.id ?? '';
+  const clientId = w?.current_client?.id ?? '';
+  const queueNo = w?.current_client?.queue_number ?? '';
+  return `${windowId}:${clientId}:${queueNo}`;
+}
+
+function maybePlayForWindow(w: any) {
+  const windowId = Number(w?.id);
+  if (!Number.isFinite(windowId)) return;
+  const key = windowClientKey(w);
+  if (lastPlayedByWindowId.get(windowId) === key) return;
+  lastPlayedByWindowId.set(windowId, key);
+
+  notifier?.play().then((ok) => {
+    if (!ok) soundBlocked.value = true;
+  });
+
+  if (w?.current_client?.queue_number && w?.name) {
+    announceQueue(w.current_client.queue_number, w.name);
+  }
+}
+
+function apiUrlForCurrentSelection() {
+  const current = new URL(window.location.href);
+  const api = new URL('/api/now-serving', current.origin);
+  const servicesParam = current.searchParams.get('services');
+  if (servicesParam) api.searchParams.set('services', servicesParam);
+  return api.toString();
+}
+
+async function pollNowServing() {
+  try {
+    const resp = await fetch(apiUrlForCurrentSelection(), {
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store',
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (Array.isArray(data?.services)) {
+      servicesState.value = data.services;
+      const computedLatest = computeLatestWindowFromServices();
+      if (computedLatest) {
+        const prevKey = windowClientKey(latestWindow.value);
+        latestWindow.value = computedLatest;
+        const nextKey = windowClientKey(computedLatest);
+        if (prevKey && nextKey && prevKey !== nextKey) {
+          maybePlayForWindow(computedLatest);
+        }
+      }
+      lastUpdateAt.value = Date.now();
+    }
+  } catch {
+    // ignore
+  }
+}
+
+watch(
+  servicesProp,
+  (val) => {
+    servicesState.value = val;
+    setInitialLatestWindow();
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   // On first load, try to show the currently serving client for the selected services
   setInitialLatestWindow();
-  audio = new Audio('/sounds/notify.mp3');
-  if (window.Echo) {
+  notifier = createNotificationAudio('/sounds/notify.mp3');
+  const echoAny = (window as any).Echo;
+  const pusher = echoAny?.connector?.pusher;
+  if (pusher?.connection?.state) {
+    const state = pusher.connection.state;
+    realtimeState.value = state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected';
+    pusher.connection.bind('state_change', (states: any) => {
+      const s = states?.current;
+      realtimeState.value = s === 'connected' ? 'connected' : s === 'connecting' ? 'connecting' : 'disconnected';
+    });
+  }
+
+  // Polling fallback when realtime drops or stalls.
+  pollTimer = window.setInterval(() => {
+    const age = Date.now() - lastUpdateAt.value;
+    if (realtimeState.value !== 'connected' || age > 20000) {
+      void pollNowServing();
+    }
+  }, 10000);
+
+  // UI clock for "last update" display.
+  tickTimer = window.setInterval(() => {
+    nowTick.value = Date.now();
+  }, 1000);
+
+  if (echoAny) {
     window.Echo.channel('windows').listen('WindowUpdated', (event: any) => {
+      lastUpdateAt.value = Date.now();
       const hasClient = event && event.window && event.window.current_client;
-      const hasService = hasClient && event.window.current_client.service;
-      const eventServiceId = hasService ? Number(event.window.current_client.service.id) : null;
+      const eventServiceId = hasClient
+        ? Number(
+            event.window.current_client?.service?.id ??
+              event.window.current_client?.service_id ??
+              null
+          )
+        : null;
       let isSelectedService = true;
       const ids = displayedServiceIds.value;
       if (ids.length > 0 && eventServiceId !== null) {
         isSelectedService = ids.includes(eventServiceId);
       } else if (ids.length > 0 && eventServiceId === null) {
-        isSelectedService = false;
+        // If service isn't present in payload, don't block updates (prevents latest call from freezing).
+        isSelectedService = true;
       }
 
-      if (audio && isSelectedService && hasClient) {
-        audio.currentTime = 0;
-        // Handle autoplay restrictions gracefully
-        const playPromise = audio.play();
-        if (playPromise && typeof playPromise.then === 'function') {
-          playPromise.catch(() => {
-            // Ignore NotAllowedError when user hasn't interacted yet
-          });
-        }
+      if (event && event.window && isSelectedService) {
+        applyWindowUpdate(event.window);
+        if (hasClient) latestWindow.value = event.window;
       }
-      if (event && event.window && hasClient && isSelectedService) {
-        latestWindow.value = event.window;
-      }
-      // Try to extract the latest queue and window from event, fallback to announce all
+
+      // Announce without forcing a full page reload.
       if (event && event.window && hasClient && event.window.name && isSelectedService) {
-        announceQueue(event.window.current_client.queue_number, event.window.name, () => {
-          router.reload();
-        });
-      } else {
-        router.reload();
+        maybePlayForWindow(event.window);
       }
     });
   }
 });
 
-// When Inertia reloads update the props, keep latestWindow in sync
-watch(services, () => {
-  setInitialLatestWindow();
-});
 onUnmounted(() => {
   if (window.Echo) {
     window.Echo.leave('windows');
   }
-  audio = null;
+  notifier?.dispose();
+  notifier = null;
+  if (pollTimer) {
+    window.clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  if (tickTimer) {
+    window.clearInterval(tickTimer);
+    tickTimer = null;
+  }
 });
+
+async function enableSound() {
+  if (!notifier) return;
+  const ok = await notifier.unlock();
+  soundBlocked.value = !ok;
+}
 
 function generateServiceUrl(serviceIds: number[]) {
   return `/now-serving?services=${serviceIds.join(',')}`;
@@ -94,10 +229,10 @@ function generateServiceUrl(serviceIds: number[]) {
 
 <template>
   <Head title="Now Serving" />
-  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-blue-200 dark:from-gray-900 dark:to-blue-900 flex flex-col lg:flex-row py-4 lg:py-8">
-    <!-- Left Panel: Video / Media -->
-    <div class="w-full lg:w-1/2 flex items-center justify-center p-4 lg:p-8">
-      <div class="w-full max-w-3xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center">
+  <div class="min-h-screen lg:h-screen lg:overflow-hidden bg-gradient-to-br from-blue-50 to-blue-200 dark:from-gray-900 dark:to-blue-900 flex flex-col lg:flex-row py-4 lg:py-8">
+    <!-- Left Panel: Video / Media (kept visible on top while list scrolls) -->
+    <div class="w-full lg:w-1/2 flex items-center justify-center p-4 lg:p-8 lg:h-full">
+      <div class="w-full max-w-3xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center lg:sticky lg:top-6">
         <video
           v-if="videoUrl"
           :src="videoUrl"
@@ -117,7 +252,17 @@ function generateServiceUrl(serviceIds: number[]) {
     </div>
 
     <!-- Right Panel: Now Serving -->
-    <div class="w-full lg:w-1/2 flex flex-col items-center justify-start px-4 lg:px-6 py-4 lg:py-6">
+    <div class="w-full lg:w-1/2 flex flex-col items-center justify-start px-4 lg:px-6 py-4 lg:py-6 lg:h-full lg:overflow-y-auto">
+      <div v-if="soundBlocked" class="w-full max-w-xl mb-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 flex items-center justify-between">
+        <div class="text-sm">
+          Sound is blocked by the browser. Click Enable Sound once.
+        </div>
+        <button type="button" class="btn btn-warning btn-sm" @click="enableSound">Enable Sound</button>
+      </div>
+      <div class="w-full max-w-xl mb-3 text-xs text-blue-900/70 dark:text-blue-100/70 flex items-center justify-between">
+        <span>Updates: {{ realtimeState }} / last {{ Math.round((nowTick - lastUpdateAt) / 1000) }}s</span>
+        <button type="button" class="underline" @click="pollNowServing">Refresh</button>
+      </div>
       <!-- Header with Controls -->
       <div class="w-full max-w-xl mb-4 flex items-center justify-between">
         <h1 class="text-3xl font-extrabold text-blue-700 dark:text-blue-200 tracking-tight">Now Serving</h1>
@@ -155,10 +300,10 @@ function generateServiceUrl(serviceIds: number[]) {
       <!-- Compact list of current windows by service -->
       <div class="w-full max-w-xl flex-1 overflow-y-auto space-y-4">
         <div v-if="selectedServiceIds.length > 0" class="mb-1 text-xs text-blue-900 dark:text-blue-200">
-          Showing {{ services.length }} of {{ allServices.length }} services
+          Showing {{ servicesState.length }} of {{ allServices.length }} services
         </div>
 
-        <div v-for="service in services" :key="service.id" class="mb-3">
+        <div v-for="service in servicesState" :key="service.id" class="mb-3">
           <div class="flex items-center justify-between mb-1">
             <h2 class="text-sm font-semibold text-blue-800 dark:text-blue-100">{{ service.name }}</h2>
             <Link :href="`/now-serving/${service.id}`" 
@@ -184,7 +329,7 @@ function generateServiceUrl(serviceIds: number[]) {
         </div>
 
         <!-- Empty State -->
-        <div v-if="services.length === 0" class="text-center text-gray-500 dark:text-gray-400 mt-8">
+        <div v-if="servicesState.length === 0" class="text-center text-gray-500 dark:text-gray-400 mt-8">
           <div class="text-5xl mb-3">🏢</div>
           <h3 class="text-lg font-semibold mb-1">No Services Selected</h3>
           <p class="mb-3 text-sm">Select which services you want to monitor</p>

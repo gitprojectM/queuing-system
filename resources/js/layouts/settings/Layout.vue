@@ -2,25 +2,19 @@
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { type NavItem } from '@/types';
+import { type NavItem, type User } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 
-const sidebarNavItems: NavItem[] = [
-    {
-        title: 'Profile',
-        href: '/settings/profile',
-    },
-    {
-        title: 'Password',
-        href: '/settings/password',
-    },
-    {
-        title: 'Appearance',
-        href: '/settings/appearance',
-    },
-];
-
 const page = usePage();
+
+const user = page.props.auth?.user as User | undefined;
+
+const sidebarNavItems: NavItem[] = [
+    { title: 'Profile', href: '/settings/profile' },
+    { title: 'Password', href: '/settings/password' },
+    { title: 'Appearance', href: '/settings/appearance' },
+    ...(user?.role === 'admin' ? [{ title: 'Display', href: '/settings/display' }] : []),
+];
 
 const currentPath = page.props.ziggy?.location ? new URL(page.props.ziggy.location).pathname : '';
 </script>
