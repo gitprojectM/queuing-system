@@ -1,5 +1,8 @@
 import '../css/app.css';
 
+import { App as CapApp } from '@capacitor/app';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
@@ -47,6 +50,31 @@ function setupEchoResilience() {
 }
 
 setupEchoResilience();
+
+// Initialize Capacitor native plugins when running inside a native shell.
+async function initCapacitor() {
+    try {
+        await StatusBar.setStyle({ style: Style.Dark });
+        await StatusBar.setBackgroundColor({ color: '#1e3a5f' });
+    } catch {
+        // Not running in native shell; safe to ignore.
+    }
+    try {
+        await SplashScreen.hide({ fadeOutDuration: 300 });
+    } catch {
+        // ignore
+    }
+    // Handle Android hardware back button: go back in history or exit.
+    CapApp.addListener('backButton', ({ canGoBack }) => {
+        if (canGoBack) {
+            window.history.back();
+        } else {
+            CapApp.exitApp();
+        }
+    });
+}
+
+initCapacitor();
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),

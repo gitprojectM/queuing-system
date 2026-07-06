@@ -1,81 +1,74 @@
 <?php
+
+use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\ClientQueueStatusController;
+use App\Http\Controllers\MultiServiceQueueController;
+use App\Http\Controllers\PublicQueueController;
+use App\Http\Controllers\QueueController;
+use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\UserAssignController;
+use App\Http\Controllers\UserDashboardController;
+use App\Http\Controllers\UserListController;
+use App\Http\Controllers\WindowController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use App\Http\Controllers\ServiceController;
-use App\Http\Controllers\WindowController;
-// use App\Http\Controllers\QueueController;
-use App\Http\Controllers\UserAssignController;
-use App\Http\Controllers\UserListController;
-use App\Http\Controllers\ClientQueueController;
-use App\Http\Controllers\PublicQueueController;
-use App\Http\Controllers\MultiServiceQueueController;
-// Queue ticket page (public)
-use App\Http\Controllers\QueueController;
-Route::get('/queue/ticket/{queue}', [QueueController::class, 'ticket'])->name('queue.ticket');
-// Public Now Serving page
-Route::get('/now-serving', [PublicQueueController::class, 'index'])->name('public.queue');
-// Custom service selection page (must come before the dynamic route)
-Route::get('/now-serving/select', [PublicQueueController::class, 'selectServices'])->name('public.queue.select');
-// Window-specific Now Serving pages
-Route::get('/now-serving/window/{window}', [PublicQueueController::class, 'windowView'])->name('public.queue.window');
-// Service-specific Now Serving pages (must come last due to dynamic parameter)
-Route::get('/now-serving/{service}', [PublicQueueController::class, 'serviceView'])->name('public.queue.service');
 
-Route::get('/my-queue', [ClientQueueController::class, 'index'])->middleware(['auth'])->name('client.queue');
+// ─── Home ────────────────────────────────────────────────────────────────────
+Route::get('/', fn() => Inertia::render('Welcome'))->name('home');
 
-// Complete (free) a window and mark queue as completed
-Route::post('/queue/complete', [QueueController::class, 'completeQueue'])->name('queue.complete');
+// ─── Public: Now Serving display ─────────────────────────────────────────────
+Route::get('/now-serving',                  [PublicQueueController::class, 'index'])->name('public.queue');
+Route::get('/now-serving/select',           [PublicQueueController::class, 'selectServices'])->name('public.queue.select');
+Route::get('/now-serving/window/{window}',  [PublicQueueController::class, 'windowView'])->name('public.queue.window');
+Route::get('/now-serving/{service}',        [PublicQueueController::class, 'serviceView'])->name('public.queue.service');
 
-// Trigger next queue assignment
-Route::post('/queue/next', [QueueController::class, 'nextQueue'])->name('queue.next');
-// Create a multi-service queue (one number, multiple services)
-// Public endpoint (no auth) so clients can register multiple services directly
-Route::post('/queue/multi-service', [MultiServiceQueueController::class, 'store'])->name('queue.multi.store');
-// User list and edit (admin only)
-Route::get('/users', [UserListController::class, 'index'])->middleware(['auth', 'admin'])->name('users.list');
-Route::get('/users/{user}/edit', [UserListController::class, 'edit'])->middleware(['auth', 'admin'])->name('users.edit');
-Route::post('/users/{user}/edit', [UserListController::class, 'update'])->middleware(['auth', 'admin'])->name('users.update');
-// API for dashboard service summary
-Route::get('/api/dashboard/services', [\App\Http\Controllers\ServiceController::class, 'dashboardServices']);
-
-// Public API for Now Serving display (fallback polling when realtime drops)
+// ─── Public API: polling fallback for Now Serving ───────────────────────────
 Route::get('/api/now-serving', [PublicQueueController::class, 'data'])->name('api.now-serving');
 
-// Add user and assign to service and window (admin only)
-Route::get('/users/assign', [UserAssignController::class, 'create'])->middleware(['auth', 'admin'])->name('users.assign');
-Route::post('/users/assign', [UserAssignController::class, 'store'])->middleware(['auth', 'admin']);
-// Queue monitoring page
-Route::get('/queue/monitor', [\App\Http\Controllers\QueueController::class, 'monitor'])->name('queue.monitor');
-// Client queue registration
-Route::get('/queue/register', [QueueController::class, 'showRegisterForm'])->name('queue.register');
-Route::post('/queue/register', [QueueController::class, 'register']);
+// ─── Public: Queue registration (rate-limited to 15 req/min per IP) ─────────
+Route::middleware('throttle:15,1')->group(function () {
+    Route::get('/queue/register',      [QueueController::class, 'showRegisterForm'])->name('queue.register');
+    Route::post('/queue/register',     [QueueController::class, 'register']);
+    Route::post('/queue/multi-service',[MultiServiceQueueController::class, 'store'])->name('queue.multi.store');
+});
 
-// List of all queue registrations
-Route::get('/queue/list', [QueueController::class, 'list'])->name('queue.list');
+// ─── Public: Queue ticket & client status ───────────────────────────────────
+Route::get('/queue/ticket/{queue}',          [QueueController::class, 'ticket'])->name('queue.ticket');
+Route::get('/queue/status/{queue}',          [ClientQueueStatusController::class, 'show'])->name('queue.status');
+Route::get('/api/queue/status/{queue}',      [ClientQueueStatusController::class, 'data'])->name('api.queue.status');
+Route::post('/queue/cancel/{queue}',         [ClientQueueStatusController::class, 'cancel'])->name('queue.cancel');
 
-Route::resource('windows', WindowController::class)->middleware(['auth', 'admin']);
+// ─── Authenticated: client queue view ───────────────────────────────────────
+Route::get('/my-queue', [\App\Http\Controllers\ClientQueueController::class, 'index'])
+    ->middleware('auth')
+    ->name('client.queue');
 
-Route::get('/', function () {
-    return Inertia::render('Welcome');
-})->name('home');
+// ─── Authenticated: operator actions ────────────────────────────────────────
+Route::middleware('auth')->group(function () {
+    Route::post('/queue/complete', [QueueController::class, 'completeQueue'])->name('queue.complete');
+    Route::post('/queue/next',     [QueueController::class, 'nextQueue'])->name('queue.next');
+    Route::get('/queue/monitor',   [QueueController::class, 'monitor'])->name('queue.monitor');
+    Route::get('/queue/list',      [QueueController::class, 'list'])->name('queue.list');
+});
 
-Route::resource('services', ServiceController::class)->middleware(['auth', 'admin']);
+// ─── Admin ───────────────────────────────────────────────────────────────────
+Route::middleware(['auth', 'admin', 'verified'])->group(function () {
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/admin',     fn() => Inertia::render('AdminDashboard'))->name('admin.dashboard');
 
-// Route::resource('window', WindowController::class)->middleware(['auth']);
+    Route::resource('services', ServiceController::class);
+    Route::resource('windows',  WindowController::class);
 
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'admin', 'verified'])->name('dashboard');
+    Route::get('/users',              [UserListController::class, 'index'])->name('users.list');
+    Route::get('/users/{user}/edit',  [UserListController::class, 'edit'])->name('users.edit');
+    Route::post('/users/{user}/edit', [UserListController::class, 'update'])->name('users.update');
 
-// Admin-only route example
-Route::get('admin', function () {
-    return Inertia::render('AdminDashboard');
-})->middleware(['auth', 'admin'])->name('admin.dashboard');
+    Route::get('/users/assign',  [UserAssignController::class, 'create'])->name('users.assign');
+    Route::post('/users/assign', [UserAssignController::class, 'store']);
+});
 
-// User-only route example
-use App\Http\Controllers\UserDashboardController;
-
-Route::get('user', [UserDashboardController::class, 'index'])
+// ─── User (operator) dashboard ───────────────────────────────────────────────
+Route::get('/user', [UserDashboardController::class, 'index'])
     ->middleware(['auth', 'user'])
     ->name('user.dashboard');
 

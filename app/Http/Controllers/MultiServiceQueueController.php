@@ -22,18 +22,7 @@ class MultiServiceQueueController extends Controller
         ]);
 
         $today = now()->toDateString();
-        // Auto-complete any queues from previous days so numbering and views reset
-        Queue::whereDate('queue_date', '<', $today)
-            ->whereIn('status', ['waiting', 'assigned'])
-            ->update([
-                'status' => 'completed',
-                'window_id' => null,
-            ]);
-        // Also clear windows that are still pointing at old-day clients
-        Window::whereHas('currentClient', function ($q) use ($today) {
-                $q->whereDate('queue_date', '<', $today);
-            })
-            ->update(['current_client_id' => null]);
+        QueueController::resetPreviousDayQueues($today);
 
         // Use global daily numbering (not per service) for multi-service tickets
         $lastQueue = Queue::whereDate('queue_date', $today)->orderByDesc('queue_number')->first();
@@ -57,7 +46,7 @@ class MultiServiceQueueController extends Controller
                 'queue_id' => $queue->id,
                 'service_id' => $serviceId,
                 'step_order' => $index + 1,
-                'status' => $index === 0 ? 'waiting' : 'waiting',
+                'status' => $index === 0 ? 'waiting' : 'pending',
             ]);
         }
 

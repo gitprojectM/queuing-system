@@ -22,3 +22,7 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Capacitor native projects (generated, not hand-edited)
+/android
+/ios

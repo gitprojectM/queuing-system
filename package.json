@@ -7,7 +7,12 @@
         "dev": "vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
-        "lint": "eslint . --fix"
+        "lint": "eslint . --fix",
+        "mobile:sync": "npx cap sync",
+        "mobile:android": "npx cap open android",
+        "mobile:ios": "npx cap open ios",
+        "mobile:build:android": "npm run build && npx cap sync android",
+        "mobile:build:ios": "npm run build && npx cap sync ios"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
@@ -28,6 +33,13 @@
         "vue-tsc": "^2.2.4"
     },
     "dependencies": {
+        "@capacitor/android": "^8.4.1",
+        "@capacitor/app": "^8.1.0",
+        "@capacitor/cli": "^8.4.1",
+        "@capacitor/core": "^8.4.1",
+        "@capacitor/ios": "^8.4.1",
+        "@capacitor/splash-screen": "^8.0.1",
+        "@capacitor/status-bar": "^8.0.2",
         "@inertiajs/vue3": "^2.1.0",
         "@vueuse/core": "^12.8.2",
         "class-variance-authority": "^0.7.1",
